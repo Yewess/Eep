@@ -1,0 +1,33 @@
+#######################################
+# Syntax Coloring Map For Eep
+#######################################
+# Datatypes    (KEYWORD1)
+#######################################
+
+Eep             KEYWORD1
+Block           KEYWORD1
+
+#######################################
+# Methods and Functions (KEYWORD2)
+#######################################
+
+valid           KEYWORD2
+lock            KEYWORD2
+locked          KEYWORD2
+unlock          KEYWORD2
+save            KEYWORD2
+data            KEYWORD2
+load            KEYWORD2
+dump            KEYWORD2
+dump            KEYWORD2
+
+#######################################
+# Constants (LITERAL1)
+#######################################
+
+EEPDEBUG        LITERAL1
+DEFMAGIC        LITERAL1
+DEFVERSION      LITERAL1
+DEFVERTYP       LITERAL1
+DEFMAGTYP       LITERAL1
+FLEXVERSION     LITERAL1
