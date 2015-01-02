@@ -1,6 +1,7 @@
 /*
- * Example sketch for eep library
+ * Templated class for initializing/containing EEPROM data in user-defined structure
  * Copyright (C) 2014 Christopher C. Evich
+ *
  *  This library is free software; you can redistribute it and/or
  *  modify it under the terms of the GNU Lesser General Public
  *  License as published by the Free Software Foundation; either
@@ -31,7 +32,8 @@ class EepromData {
     uint32_t answer = 42;
 };
 
-const EepromData defaults;  // Used when contents are unset/invalid
+const EepromData defaults PROGMEM;  // Used when contents are unset/invalid
+                                    // stored in program-space.
 
 // Increment version number whenever data format changes (above)
 typedef Eep::Eep<EepromData, 1> Eep_type;  // Create template class alias

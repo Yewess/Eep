@@ -1,6 +1,7 @@
 /*
- * Example sketch for eep library
+ * Templated class for initializing/containing EEPROM data in user-defined structure
  * Copyright (C) 2014 Christopher C. Evich
+ *
  *  This library is free software; you can redistribute it and/or
  *  modify it under the terms of the GNU Lesser General Public
  *  License as published by the Free Software Foundation; either
@@ -19,7 +20,7 @@
 // Uncomment to see extra juicy details of what's happening
 // #define EEPDEBUG
 
-#include <eep.h>
+#include <Eep.h>
 #include "HelloWorld.h"
 
 void setup(void) {

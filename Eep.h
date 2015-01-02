@@ -1,5 +1,7 @@
-/* Templated class for initializing/containing EEPROM data in user-defined structure
+/*
+ * Templated class for initializing/containing EEPROM data in user-defined structure
  * Copyright (C) 2014 Christopher C. Evich
+ *
  *  This library is free software; you can redistribute it and/or
  *  modify it under the terms of the GNU Lesser General Public
  *  License as published by the Free Software Foundation; either
@@ -37,6 +39,10 @@ namespace Eep {
     #define D(...) if (false)
     #define DL(...) if (false)
 #endif // EEPDEBUG
+
+// Un-define this if defaults are located in RAM instead of
+// PROGMEM (not recommended).
+#define DEFAULTS_PROGMEM
 
 // Define this to prefix all debugging strings
 // with '0x' for all HEX digits
@@ -343,7 +349,11 @@ EEPNAME::Eep(const data_type& defaults,
         D(buffer.magic, HEX);
         DL(F(")"));
         buffer.version = version_value;
-        memcpy(&buffer.data, &defaults, sizeof(data_type));
+        #ifdef DEFAULTS_PROGMEM
+            memcpy_P(&buffer.data, &defaults, sizeof(data_type));
+        #else
+            memcpy(&buffer.data, &defaults, sizeof(data_type));
+        #endif // DEFAULTS_PROGMEM
         eeprom_busy_wait();
         eeprom_update_block(&buffer,                        // local memory
                             address,                        // EEProm address
