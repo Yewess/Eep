@@ -36,12 +36,15 @@ const EepromData defaults PROGMEM;  // Used when contents are unset/invalid
                                     // stored in program-space.
 
 // Increment version number whenever data format changes (above)
-typedef Eep::Eep<EepromData, 1> Eep_type;  // Create template class alias
+const uint8_t eepromVersion = 1;
+
+// Make the customized type easier to reference from sketch
+typedef Eep::Eep<EepromData, eepromVersion> Eep_type;
 
 // Staticly allocate space in EEProm area w/ EEMEM macro from <avr/eeprom.h>
 // This will cause HelloWorld.eep to be generated, and can be flashed using ISP
 // programmer, or uploaded directly if using a mega or other *duino w/ eeprom
-// upload support in bootloader.
+// upload support in bootloader (i.e. NOT optiboot).
 Eep_type::Block eemem EEMEM;  // Allocate space in EEProm area.  NEVER dereference
                               // this address in sketch, "Bad Things Will Happen" (TM)
 
