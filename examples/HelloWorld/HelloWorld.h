@@ -27,8 +27,8 @@
 // this can be scaled down to as little as 2-bytes.
 class EepromData {
     public:
-    char h[7] = "hello";
-    char w[7] = "world";
+    char h[6] = "hello";
+    char w[6] = "world";
     uint32_t answer = 42;
 };
 

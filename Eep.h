@@ -147,13 +147,15 @@ class Eep {
     Eep(self_type::Block* eeprom_address);
 };
 
-EEPTEMPLATED
+EEPTEMPLATE
 class EEPNAME::Block {
     private:
     friend EEPNAME;
-    magic_type magic = magic_value;
-    version_type version = version_value;
+    magic_type magic;
+    version_type version;
     data_type data;
+    public:
+    Block(void) : magic(magic_value), version(version_value) {}
 };
 
 /*
@@ -195,8 +197,8 @@ inline bool EEPNAME::lock(void) {
     if (valid()) {
         buffer.magic = static_cast<magic_type>(~magic_value);
         eeprom_busy_wait();
-        eeprom_update_block(&buffer.magic,                   // local memory
-                            address + offsetof(Block, magic),// EEProm address
+        eeprom_update_block(&buffer.magic,          // local memory
+                            &address->magic,        // EEProm address
                             sizeof(magic_type));
         eeprom_busy_wait();
         H();
@@ -211,8 +213,8 @@ inline bool EEPNAME::lock(void) {
 EEPTEMPLATE
 inline bool EEPNAME::locked(void) {
     eeprom_busy_wait();
-    eeprom_read_block(&buffer.magic,                         // local memory
-                      address + offsetof(Block, magic),      // EEProm address
+    eeprom_read_block(&buffer.magic,               // local memory
+                      &address->magic,             // EEProm address
                       sizeof(magic_type));
     eeprom_busy_wait();
     H();
@@ -245,8 +247,8 @@ inline bool EEPNAME::unlock(void) {
     }
     magic_type correct = static_cast<magic_type>(magic_value);
     eeprom_busy_wait();
-    eeprom_update_block(&correct,                            // local memory
-                        address + offsetof(Block, magic),    // EEProm address
+    eeprom_update_block(&correct,                  // local memory
+                        &address->magic,           // EEProm address
                         sizeof(magic_type));
     eeprom_busy_wait();
     H();
