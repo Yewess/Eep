@@ -27,6 +27,14 @@
 
 namespace Eep {
 
+// Define this to prefix all debugging strings
+// with '0x' for all HEX digits
+#ifdef EEP_HEX_PFX
+#define PFX "0x"
+#else
+#define PFX ""
+#endif //EEP_HEX_PFX
+
 // Define this to enable library debugging
 #ifdef EEPDEBUG
     #define D(...) Serial.print(__VA_ARGS__)
@@ -43,14 +51,6 @@ namespace Eep {
 // Un-define this if defaults are located in RAM instead of
 // PROGMEM (not recommended).
 #define DEFAULTS_PROGMEM
-
-// Define this to prefix all debugging strings
-// with '0x' for all HEX digits
-#ifdef EEP_HEX_PFX
-#define PFX "0x"
-#else
-#define PFX ""
-#endif //EEP_HEX_PFX
 
 #ifndef DEFMV
     #define DEFMAGIC 0xEFBEADDE
@@ -197,8 +197,9 @@ inline bool EEPNAME::lock(void) {
     if (valid()) {
         buffer.magic = static_cast<magic_type>(~magic_value);
         eeprom_busy_wait();
-        eeprom_update_block(&buffer.magic,          // local memory
-                            &address->magic,        // EEProm address
+        // &address.magic == &address
+        eeprom_update_block(&buffer,  // local memory
+                            address,  // EEProm address
                             sizeof(magic_type));
         eeprom_busy_wait();
         H();
@@ -213,8 +214,8 @@ inline bool EEPNAME::lock(void) {
 EEPTEMPLATE
 inline bool EEPNAME::locked(void) {
     eeprom_busy_wait();
-    eeprom_read_block(&buffer.magic,               // local memory
-                      &address->magic,             // EEProm address
+    eeprom_read_block(&buffer,  // local memory
+                      address,  // EEProm address
                       sizeof(magic_type));
     eeprom_busy_wait();
     H();
@@ -247,8 +248,8 @@ inline bool EEPNAME::unlock(void) {
     }
     magic_type correct = static_cast<magic_type>(magic_value);
     eeprom_busy_wait();
-    eeprom_update_block(&correct,                  // local memory
-                        &address->magic,           // EEProm address
+    eeprom_update_block(&correct,  // local memory
+                        address,   // EEProm address
                         sizeof(magic_type));
     eeprom_busy_wait();
     H();
@@ -314,28 +315,32 @@ inline data_type* EEPNAME::load(void) {
 EEPTEMPLATE
 void EEPNAME::dump(self_type::Block* address) {
     H();
-    D(F("\tDumping EEProm addresses and contents:"));
+    DL(F("\tDumping EEProm addresses and contents:"));
     static uint8_t* start_address = reinterpret_cast<uint8_t*>(address);
     for (uint8_t* byte_address = start_address;
          byte_address < start_address + sizeof(Block);
-         byte_address++) {
-        // contents should be aligned, first iteration should hit
-        if (reinterpret_cast<uint16_t>(byte_address) % 8 == 0) {
-            D(F("\n@" PFX));
-            D(reinterpret_cast<uint16_t>(byte_address), HEX);
-            D(F(":\t"));  // tab avoids need to pad value
-        }
-        #ifdef EEP_HEX_PFX
-        D(F("0x"));
-        #endif // EEP_HEX_PFX
-        uint8_t value = eeprom_read_byte(byte_address);
-        if (value < 0x10) // Pad
-            D(F("0"));
-        D(value, HEX);
-        #ifdef EEP_HEX_PFX
-        D(F("  "));
-        #endif // EEP_HEX_PFX
+         byte_address += 8) {
+
+        D(F("\n@" PFX));
+        D(reinterpret_cast<uint16_t>(byte_address), HEX);
+        D(F(":\t"));  // tab avoids need to pad value
+        for (uint8_t b=0; b<7; b++)
+            if (byte_address + b > start_address + sizeof(Block))
+                break;
+            else {
+                #ifdef EEP_HEX_PFX
+                D(F("0x"));
+                #endif // EEP_HEX_PFX
+                uint8_t value = eeprom_read_byte(byte_address + b);
+                if (value < 0x10) // Pad
+                    D(F("0"));
+                D(value, HEX);
+                #ifdef EEP_HEX_PFX
+                D(F("  "));
+                #endif // EEP_HEX_PFX
+            }
     }
+    DL();
     DL();
 }
 #endif // EEPDEBUG
