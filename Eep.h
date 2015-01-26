@@ -94,16 +94,8 @@ namespace Eep {
 EEPTEMPLATED
 class Eep {
     public:
-    typedef EEPNAME self_type;
-
-    // Declaration public, Implementation is private
-    // Allows staticly allocating w/ EEMEM macro
     class Block;
-    Block* address;
-    Block buffer;
-
-    // Returns true if magic and version values match expected values
-    bool valid();
+    typedef EEPNAME self_type;
 
     // Sets lock in data in EEPROM to sync. w/ external state
     // Returns true on success, false on failure
@@ -145,17 +137,22 @@ class Eep {
     // Initialize, DO NOT re-initialize, fail if EEPROM content is invalid
     // loads into static buffer
     Eep(self_type::Block* eeprom_address);
+
+    private:
+    // Declaration public, Implementation is private
+    Block* address;
+    Block buffer;
+    // Returns true if magic and version values match expected values
+    bool valid();
 };
 
 EEPTEMPLATE
 class EEPNAME::Block {
     private:
     friend EEPNAME;
-    magic_type magic;
-    version_type version;
+    magic_type magic = magic_value;
+    version_type version = version_value;
     data_type data;
-    public:
-    Block(void) : magic(magic_value), version(version_value) {}
 };
 
 /*
