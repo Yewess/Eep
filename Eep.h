@@ -385,15 +385,4 @@ EEPNAME::Eep(self_type::Block* eeprom_address) : address(eeprom_address) {
 
 }; // namespace Eep
 
-// Prevent conflict or use outside header
-#ifndef EEP_CPP
-    #undef EEPTEMPLATED
-    #undef EEPTEMPLATE
-    #undef EEPNAME
-    #undef PFX
-    #undef H
-    #undef D
-    #undef DL
-#endif //EEP_CPP
-
 #endif  // EEP_H
