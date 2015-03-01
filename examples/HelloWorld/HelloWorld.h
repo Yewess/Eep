@@ -24,27 +24,32 @@
 // Must be "standard layout" class, or have static initialized
 // members.  The amount of eeprom space is the only limiting factor.
 // There is only a small (5-byte) overhead per data structure, though
-// this can be scaled down to as little as 2-bytes.
+// this can be scaled down to as little as 2-bytes.  You can make
+// as many of these structures as you like and distribute them among
+// all code modules.
 class EepromData {
     public:
-    char h[6] = "hello";
-    char w[6] = "world";
-    uint32_t answer = 42;
-};
+    char h[6];
+    char w[6];
+    uint32_t answer;
+} const defaults PROGMEM = {.h = "hello",   // Used when contents are unset/invalid
+                            .w = "world",   // stored in program-space.  Must be
+                            .answer = 42U}; // staticly initialized, POD-type.
 
-const EepromData defaults PROGMEM;  // Used when contents are unset/invalid
-                                    // stored in program-space.
 
 // Increment version number whenever data format changes (above)
+// or you want to force reload of new defaults.
 const uint8_t eepromVersion = 1;
 
 // Make the customized type easier to reference from sketch
 typedef Eep::Eep<EepromData, eepromVersion> Eep_type;
 
 // Staticly allocate space in EEProm area w/ EEMEM macro from <avr/eeprom.h>
-// This will cause HelloWorld.eep to be generated, and can be flashed using ISP
+// This will cause HelloWorld.eep to be generated.  If not storing EepromData
+// (above) staticly into PROGMEM, HelloWorld.eep can be flashed using ISP
 // programmer, or uploaded directly if using a mega or other *duino w/ eeprom
-// upload support in bootloader (i.e. NOT optiboot).
+// upload support in bootloader (i.e. NOT optiboot).  Normally, putting
+// the defaults into PROGMEM is the safest/easiest.
 Eep_type::Block eemem EEMEM;  // Allocate space in EEProm area.  NEVER dereference
                               // this address in sketch, "Bad Things Will Happen" (TM)
 

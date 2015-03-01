@@ -150,10 +150,13 @@ EEPTEMPLATE
 class EEPNAME::Block {
     private:
     friend EEPNAME;
-    magic_type magic = magic_value;
-    version_type version = version_value;
+    static magic_type magic;
+    static version_type version;
     data_type data;
 };
+
+EEPTEMPLATE magic_type EEPNAME::Block::magic = magic_value;
+EEPTEMPLATE version_type EEPNAME::Block::version = version_value;
 
 /*
  * Inline implementations

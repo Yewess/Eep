@@ -17,8 +17,8 @@
  *  Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
-// Uncomment to see extra juicy details of what's happening
-// #define EEPDEBUG
+// Define to see extra juicy details of what's happening
+#define EEPDEBUG
 
 #include <Eep.h>
 #include "HelloWorld.h"
