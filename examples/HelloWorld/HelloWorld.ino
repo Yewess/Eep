@@ -29,7 +29,7 @@ void setup(void) {
     Serial.println(F("\nSetup()"));
 
     // DO NOT USE eemem any other way! (address is relative to .eeprom section)
-    Eep_type eep(defaults, &eemem);
+    Eep_type eep(&defaults, &eemem);
 
     #ifdef EEPDEBUG
     // Serial.print() out contents 8 bytes at a time

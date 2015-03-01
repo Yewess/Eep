@@ -125,6 +125,7 @@ class Eep {
     #ifdef EEPDEBUG
     // Show actual contents @ address
     static void dump(self_type::Block* address);
+    static void ddump(const data_type* defaults);
 
     // Show actual contents for instance
     void dump(void) { self_type::dump(address); }
@@ -132,7 +133,7 @@ class Eep {
 
     // Initialize || re-initialize if EEPROM content is invalid
     // loads into static buffer
-    Eep(const data_type& defaults, self_type::Block* eeprom_address);
+    Eep(const data_type* defaults, self_type::Block* eeprom_address);
 
     // Initialize, DO NOT re-initialize, fail if EEPROM content is invalid
     // loads into static buffer
@@ -348,14 +349,54 @@ void EEPNAME::dump(self_type::Block* address) {
             }
     }
     DL();
+}
+
+EEPTEMPLATE
+void EEPNAME::ddump(const data_type* defaults) {
+    static uint16_t start_address = reinterpret_cast<uint16_t>(defaults);
+    D(F("\tDumping Defaults addresses@contents... ("));
+    D(sizeof(data_type));
+    D(F(" bytes) @ 0x"));
+    D(start_address, HEX);
+    D(F(":"));
+    for (uint16_t offset = 0;
+         offset < sizeof(data_type);
+         offset += 8) {
+        DL();
+        D(F("\t@" PFX));
+        D(start_address + offset, HEX);
+        D(F(":\t"));  // tab avoids need to pad value
+        for (uint8_t bite=0; bite < 8; bite++)
+            if (offset + bite > sizeof(data_type))
+                break;
+            else {
+                uint16_t complete_address = start_address + offset + bite;
+                #ifdef EEP_HEX_PFX
+                D(F("0x"));
+                #else
+                D(F(" "));
+                #endif // EEP_HEX_PFX
+                uint8_t value = pgm_read_byte(
+                                reinterpret_cast<uint8_t*>(complete_address));
+                if (value < 0x10) // Pad
+                    D(F("0"));
+                D(value, HEX);
+                #ifdef EEP_HEX_PFX
+                D(F(" "));
+                #endif // EEP_HEX_PFX
+            }
+    }
     DL();
 }
 
 #endif // EEPDEBUG
 
 EEPTEMPLATE
-EEPNAME::Eep(const data_type& defaults,
+EEPNAME::Eep(const data_type* defaults,
              self_type::Block* eeprom_address) : address(eeprom_address) {
+    #ifdef EEPDEBUG
+    ddump(defaults);
+    #endif // EEPDEBUG
     if (!load()) {
         H();
         D(F("\tResetting to defaults (locked magic: " PFX));
@@ -365,9 +406,9 @@ EEPNAME::Eep(const data_type& defaults,
         DL(F(")"));
         buffer.version = version_value;
         #ifdef DEFAULTS_PROGMEM
-            memcpy_P(&buffer.data, &defaults, sizeof(data_type));
+            memcpy_P(&buffer.data, defaults, sizeof(data_type));
         #else
-            memcpy(&buffer.data, &defaults, sizeof(data_type));
+            memcpy(&buffer.data, defaults, sizeof(data_type));
         #endif // DEFAULTS_PROGMEM
         eeprom_busy_wait();
         eeprom_update_block(&buffer,                        // local memory
