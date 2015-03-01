@@ -312,34 +312,42 @@ inline data_type* EEPNAME::load(void) {
 EEPTEMPLATE
 void EEPNAME::dump(self_type::Block* address) {
     H();
-    DL(F("\tDumping EEProm addresses and contents:"));
-    static uint8_t* start_address = reinterpret_cast<uint8_t*>(address);
-    for (uint8_t* byte_address = start_address;
-         byte_address < start_address + sizeof(Block);
-         byte_address += 8) {
-
-        D(F("\n@" PFX));
-        D(reinterpret_cast<uint16_t>(byte_address), HEX);
+    D(F("\tDumping EEProm addresses@contents... ("));
+    D(sizeof(self_type::Block));
+    D(F(" bytes):"));
+    static uint16_t start_address = reinterpret_cast<uint16_t>(address);
+    for (uint16_t offset = 0;
+         offset < sizeof(self_type::Block);
+         offset += 8) {
+        DL();
+        H();
+        D(F("\t@" PFX));
+        D(start_address + offset, HEX);
         D(F(":\t"));  // tab avoids need to pad value
-        for (uint8_t b=0; b<7; b++)
-            if (byte_address + b > start_address + sizeof(Block))
+        for (uint8_t bite=0; bite < 8; bite++)
+            if (offset + bite > sizeof(self_type::Block))
                 break;
             else {
+                uint16_t complete_address = start_address + offset + bite;
                 #ifdef EEP_HEX_PFX
                 D(F("0x"));
+                #else
+                D(F(" "));
                 #endif // EEP_HEX_PFX
-                uint8_t value = eeprom_read_byte(byte_address + b);
+                uint8_t value = eeprom_read_byte(
+                                reinterpret_cast<uint8_t*>(complete_address));
                 if (value < 0x10) // Pad
                     D(F("0"));
                 D(value, HEX);
                 #ifdef EEP_HEX_PFX
-                D(F("  "));
+                D(F(" "));
                 #endif // EEP_HEX_PFX
             }
     }
     DL();
     DL();
 }
+
 #endif // EEPDEBUG
 
 EEPTEMPLATE
