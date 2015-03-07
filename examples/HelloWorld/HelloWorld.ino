@@ -1,5 +1,5 @@
 /*
- * Templated class for initializing/containing EEPROM data in user-defined structure
+ * Example code for Eep template class
  * Copyright (C) 2014 Christopher C. Evich
  *
  *  This library is free software; you can redistribute it and/or
@@ -17,28 +17,66 @@
  *  Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
-// Uncomment to see extra juicy details of what's happening
-// #define EEPDEBUG
+
+// Define to see extra juicy details of what's happening
+#define EEPDEBUG
 
 #include <Eep.h>
-#include "HelloWorld.h"
+
+// Arbitrary type of data to persist w/in EEProm. Make as many as you want.
+// They must be "standard layout" class, struct, or aggregate.
+// No fancy stuff like constructors, though member-functions are okay.
+// There is a small overhead (handful of bytes) per data structure, used
+// to frame the data and protect against corruption during power failure.
+struct Data {
+    char h[6];
+    char w[6];
+    uint32_t answer;
+};
+
+// Default values to use when storage is uninitialized
+// or corrupt.
+const Data dataDefaults PROGMEM = {
+    .h = "hello",
+    .w = "world",
+    .answer = 42U
+};
+
+// Optional.  The data can be wrapped with a unique identifier
+// to help distinguish it from other data structures and protect
+// it during write operations.
+const Eep::Magic dataMagic = 0xBAADF00D;
+
+// Optional.  The data will be wrapped with a version number to
+// indenfify changes in the format over time.  This should be
+// changed any time the data structure format is changed.
+const Eep::Version dataVersion = 1;
+
+// This just makes it easier to reference below
+typedef Eep::Eep<Data, dataVersion, dataMagic> DataEep;
 
 void setup(void) {
     Serial.begin(115200);
     delay(1);  // Serial client sometimes needs extra time to initialize
     Serial.println(F("\nSetup()"));
 
-    // DO NOT USE eemem any other way! (address is relative to .eeprom section)
-    Eep_type eep(defaults, &eemem);
+#ifdef EEPDEBUG
+    // For testing/demonstration purposes, start with factory-state
+    // eeprom, black out twice-times the Data size (just to be safe)
+    Serial.print(F("Overwriting 2 x "));
+    size_t size = sizeof(Eep::Block<Data>);
+    Serial.print(size);
+    Serial.println(F(" bytes in EEPROM..."));
+    for (uint16_t bite = 0; bite < size * 2; bite++)
+        eeprom_update_byte(reinterpret_cast<uint8_t*>(bite), 0x00);
+#endif //EEPDEBUG
 
-    #ifdef EEPDEBUG
-    // Serial.print() out contents 8 bytes at a time
-    eep.dump();
-    #endif //EEPDEBUG
+    // Initialize and reset to default values if invalid/uninitialized
+    DataEep eep(dataDefaults);
 
-    // EEPRom contents was loaded during initialization (above)
-    // no need to use eep.load() again, just grab a static buffer reference.
-    EepromData* data = eep.data();
+    // EEPRom contents loaded & validated during initialization (above).
+    // Re-validate and obtain pointer to static data buffer
+    Data* data = eep.data();
     if (data) {  // NULL pointer signals load/reset failure
         Serial.println(F("EEPRom content is valid"));
         Serial.print(F("The data is: "));
@@ -47,25 +85,25 @@ void setup(void) {
         Serial.print(data->w);
         Serial.print(F(" answer is: "));
         Serial.println(data->answer);
-        // Since this sketch defined EepromData, it's
-        // safe to modify static buffer directly.
-        if (data->answer == 24) {
+        // It's safe to modify static buffer directly.
+        if (data->answer != 42) {
+            // Change data inside static buffer
             data->answer = 42;
-            memcpy(&data->h, "hello", 7);
-            memcpy(&data->w, "world", 7);
-            // eep.save() operates semi-atomicly, a power-loss during
-            // save will cause defaults to be restored.
-            if (eep.save())
+            memcpy(&data->h, "hello", 6); // 5 chars + 1 null
+            memcpy(&data->w, "world", 6);
+            // eep.save() operates atomicly, power-loss during
+            // save will not cause corrupt data.
+            if (eep.save())  // save from static bufffer
                 Serial.println(F("Data updated"));
             else
                 Serial.println(F("Update failed"));
         } else {
-            // Possible to save from local data instead of static buffer.
-            EepromData newdata;
+            // Equally safe to maintain a separate copy
+            Data newdata;
             newdata.answer = 24;
-            memcpy(&newdata.h, "world", 7);
-            memcpy(&newdata.w, "hello", 7);
-            if (eep.save(&newdata))
+            memcpy(&newdata.h, "world", 6);
+            memcpy(&newdata.w, "hello", 6);
+            if (eep.save(newdata))
                 Serial.println(F("Data updated"));
             else
                 Serial.println(F("Update failed"));
@@ -78,13 +116,9 @@ void setup(void) {
 
 void loop(void) {
     // This alternate constructor will NOT restore defaults automaticaly.
-    Eep_type eep(&eemem);  // DO NOT USE eemem any other way!
+    DataEep eep;  // Doesn't reset to defaults
 
-    #ifdef EEPDEBUG
-    eep.dump();
-    #endif //EEPDEBUG
-
-    EepromData* data = eep.data();  // Grab static buffer reference
+    Data* data = eep.data();  // Grab static buffer reference
     if (data) {
         Serial.println(F("EEPRom content is still valid"));
         Serial.print(F("The data is: "));

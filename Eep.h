@@ -1,5 +1,5 @@
 /*
- * Templated class for initializing/containing EEPROM data in user-defined structure
+ * Templated class for user-defined structures in auto-allocated EEPROM
  * Copyright (C) 2014 Christopher C. Evich
  *
  *  This library is free software; you can redistribute it and/or
@@ -24,376 +24,456 @@
 #include <avr/eeprom.h>
 #include <stdint.h>
 #include <string.h>
+#include <util/crc16.h>
 
 namespace Eep {
 
-// Define this to prefix all debugging strings
-// with '0x' for all HEX digits
-#ifdef EEP_HEX_PFX
-#define PFX "0x"
-#else
-#define PFX ""
-#endif //EEP_HEX_PFX
+/*
+ * Macros
+ */
+
+// (Advanced/Optional) Define NOEEPROMINIT to not
+// initialize static, empty EEPROM values.  Then caller
+// is responsible for EEPROM initialization.  The output
+// can then be burned to the EEPROM separately.
+//#define NOEEPROMINIT
 
 // Define this to enable library debugging
-#ifdef EEPDEBUG
-    #define D(...) Serial.print(__VA_ARGS__)
-    #define DL(...) Serial.println(__VA_ARGS__)
-    #define H() D(F("Eep" PFX));\
-                D(reinterpret_cast<uint16_t>(address), HEX);\
-                D(':')
+#ifndef EEPDEBUG
+#define H()
+#define D(...)
+#define DL(...)
 #else
-    #define H() if (false)  // NOOP, will be optimized away.
-    #define D(...) if (false)
-    #define DL(...) if (false)
+#define D(...) Serial.print(__VA_ARGS__)
+#define DL(...) Serial.println(__VA_ARGS__)
+#define H() D(F("Eep @0x"));\
+                    D(reinterpret_cast<uintptr_t>(&block_eeprom), HEX);\
+                    D(':')
 #endif // EEPDEBUG
 
-// Un-define this if defaults are located in RAM instead of
-// PROGMEM (not recommended).
-#define DEFAULTS_PROGMEM
+#ifndef DEFMAGIC
+#define DEFMAGIC 0xEFBEADDE  // DEADBEEF!
+#endif // DEFMAGIC
 
-#ifndef DEFMV
-    #define DEFMAGIC 0xEFBEADDE
-    #define DEFVERSION 0
-    #define DEFVERTYP uint8_t
-    #define DEFMAGTYP uint32_t
-#endif //
+#ifndef DEFVERSION
+#define DEFVERSION 0
+#endif // DEFVERSION
 
-// Define this to allow changing the version type
-#ifdef FLEXVERSION
-    #define EEPTEMPLATED template <class data_type,\
-                                   class version_type = DEFVERTYP,\
-                                   version_type version_value = DEFVERSION,\
-                                   class magic_type = DEFMAGTYP,\
-                                   magic_type magic_value = DEFMAGIC>
+#ifndef DEFCRC
+#define DEFCRC 0
+#endif // DEFCRC
 
-    #define EEPTEMPLATE template <class data_type,\
-                                  class version_type,\
-                                  version_type version_value,\
-                                  class magic_type,\
-                                  magic_type magic_value>
+/*
+ * Basic typedefs for reference
+ */
+typedef uint32_t Magic;
+typedef uint8_t Version;
+typedef uint32_t Crc;
 
-    #define EEPNAME Eep<data_type, version_type,\
-                        version_value, magic_type, magic_value>
-#else
-    typedef DEFVERTYP version_type;
-    #define EEPTEMPLATED template <class data_type,\
-                                   version_type version_value = DEFVERSION,\
-                                   class magic_type = DEFMAGTYP,\
-                                   magic_type magic_value = DEFMAGIC>
+/*
+ * Forward declarations
+ */
 
-    #define EEPTEMPLATE template <class data_type,\
-                                  version_type version_value,\
-                                  class magic_type,\
-                                  magic_type magic_value>
+// This is the type intended for use in calling code
+template<typename Data,
+         Version version_value = DEFVERSION,
+         Magic magic_value = DEFMAGIC> class Eep;
 
-    #define EEPNAME Eep<data_type, version_value,\
-                        magic_type, magic_value>
-#endif //FLEXVERSION
+// Normal use shouldn't ever need to touch this
+template<typename Data> struct Block;
 
-EEPTEMPLATED
+/*
+ * Declarations
+ */
+
+template<typename Data, Version version_value, Magic magic_value>
 class Eep {
-    public:
-    class Block;
-    typedef EEPNAME self_type;
-
-    // Sets lock in data in EEPROM to sync. w/ external state
-    // Returns true on success, false on failure
-    bool lock(void);
-
-    // Return true if data lock is set, false if not, or data invalid.
-    bool locked(void);
-
-    // Releases data lock, returns true on success, false on failure
-    bool unlock(void);
-
-    // store static buffer content in EEPROM
-    // Returns true on success, false on failure
-    bool save(void);
-
-    // store data content in EEPROM
-    // Returns true on success, false on failure
-    bool save(data_type* data);
-
-    // Return address to static buffer previously loaded, NULL if invalid
-    data_type* data(void);
-
-    // Validate && load data from EEPROM
-    // Return address to static buffer holding loaded data, NULL if invalid
-    data_type* load(void);
-
-    #ifdef EEPDEBUG
-    // Show actual contents @ address
-    static void dump(self_type::Block* address);
-
-    // Show actual contents for instance
-    void dump(void) { self_type::dump(address); }
-    #endif // EEPDEBUG
+  public:
+    const size_t block_size;  // for convenience
 
     // Initialize || re-initialize if EEPROM content is invalid
-    // loads into static buffer
-    Eep(const data_type& defaults, self_type::Block* eeprom_address);
+    // loads into static buffer from PROGMEM reference
+    Eep(const Data& data_progmem);
 
     // Initialize, DO NOT re-initialize, fail if EEPROM content is invalid
     // loads into static buffer
-    Eep(self_type::Block* eeprom_address);
+    Eep(void);
 
-    private:
-    // Declaration public, Implementation is private
-    Block* address;
-    Block buffer;
+    // store static buffer content in EEPROM if formated.
+    // Returns true on success, false on failure
+    bool save(void);
+
+    // store data content in EEPROM if formated.
+    // Returns true on success, false on failure
+    bool save(const Data& data);
+
+    // Forcibly re-format content in EEPROM, return true on success
+    bool format(void);
+
+    // Format with some existing data, returns true on success
+    bool format(const Data& data);
+
+    // Return address to static buffer previously loaded, NULL if invalid
+    Data* data(void);
+
+    // Return address to static buffer holding loaded data, NULL if invalid
+    Data* load(void);
+
+#ifdef EEPDEBUG
+    // Show actual contents for instance
+    void dump(void);
+#else
+    void dump(void) {};  // no op
+#endif // EEPDEBUG
+
+  private:
+    static Block<Data> block_eeprom;  // Address in EEProm
+    Block<Data> buffer;  // local copy of data
+
     // Returns true if magic and version values match expected values
-    bool valid();
+    bool valid(const Block<Data>& check);
+    bool valid(void);
+
+    // Load w/o validating
+    void load_unvalidated(Block<Data>& dest);
+    void load_unvalidated(void);
+
+#ifdef EEPDEBUG
+    void ddump(const Data& data_progmem);
+#endif // EEPDEBUG
 };
 
-EEPTEMPLATE
-class EEPNAME::Block {
-    private:
-    friend EEPNAME;
-    magic_type magic = magic_value;
-    version_type version = version_value;
-    data_type data;
+template<typename Data>
+struct Block {
+    Magic magic;
+    Version version;
+    Data data;
+    Crc crc;
+
+    // Calculate and return correct crc value
+    Crc make_crc(const Block& block) const;
+    Crc make_crc(void) const;
+
+    // Return True if crc value is correct
+    bool crc_valid(const Block& block) const;
+    bool crc_valid(void) const;
 };
 
 /*
- * Inline implementations
+ * Static Definitions
  */
 
-EEPTEMPLATE
-inline bool EEPNAME::valid() {
-    H();
-    // static_cast makes sure optimization doesn't change const width
-    if ((buffer.magic == static_cast<magic_type>(magic_value)) &&
-        (buffer.version == static_cast<version_type>(version_value))) {
-        D(F("\tContents valid (magic: " PFX));
-        D(buffer.magic, HEX);
-        D(F(" version: "));
-        D(buffer.version, DEC);
-        DL(F(")"));
-        return true;
-    } else {
-        D(F("\tContents invalid (magic: " PFX));
-        D(buffer.magic, HEX);
-        D(F(" version: "));
-        D(buffer.version, DEC);
-        DL(F(")"));
-        H();
-        D(F("\tExpecting magic: " PFX));
-        D(static_cast<magic_type>(magic_value), HEX);
-        D(F(" version: "));
-        DL(static_cast<version_type>(version_value), DEC);
-        return false;
+#ifndef NOEEPROMINIT
+template<typename Data, Version version_value, Magic magic_value>
+Block<Data> Eep<Data, version_value, magic_value>::block_eeprom EEMEM;
+#endif  // NOEEPROMINIT
+
+/*
+ * Implementations
+ */
+
+template<typename Data>
+Crc Block<Data>::make_crc(const Block& block) const {
+    Block compute;
+    memcpy(&compute, &block, sizeof(compute));
+    compute.crc = DEFCRC;
+    uint8_t* byte_addr = reinterpret_cast<uint8_t*>(&compute);
+    Crc crc = (Crc) - 1; // all 1's
+    for (uintptr_t offset = 0; offset < sizeof(compute); offset++) {
+        uint8_t* data = byte_addr + offset;
+        crc = _crc16_update(crc, *data);
     }
+    return crc;
 }
 
-EEPTEMPLATE
-inline bool EEPNAME::lock(void) {
-    H();
-    DL(F("\tLocking"));
-    // Only lock if magic/version are valid
-    if (valid()) {
-        buffer.magic = static_cast<magic_type>(~magic_value);
-        eeprom_busy_wait();
-        // &address.magic == &address
-        eeprom_update_block(&buffer,  // local memory
-                            address,  // EEProm address
-                            sizeof(magic_type));
-        eeprom_busy_wait();
+template<typename Data>
+Crc Block<Data>::make_crc(void) const {
+    return this->make_crc(*this);
+}
+
+template<typename Data>
+bool Block<Data>::crc_valid(const Block& block) const {
+    return block.crc == make_crc(block);
+}
+
+template<typename Data>
+bool Block<Data>::crc_valid(void) const {
+    return this->crc_valid(*this);
+}
+
+
+template<typename Data, Version version_value, Magic magic_value>
+Eep<Data, version_value, magic_value>::Eep(const Data& data_progmem) :
+    block_size(sizeof(Block<Data>)) {
+    if (!load()) {
         H();
-        DL(F("\tContents locked"));
-        return true;
+        DL(F("\tResetting to defaults"));
+#ifdef EEPDEBUG
+        ddump(data_progmem);
+#endif // EEPDEBUG
+        memcpy_P(&this->buffer.data, &data_progmem, sizeof(data_progmem));
+        if (!format()) {
+            H();
+            DL(F("\tFormatting Failed!"));
+            return;
+        }
     }
     H();
-    DL(F("\tLocking failed"));
-    return false;
+    DL(F("\tInitialized"));
+    this->dump();
 }
 
-EEPTEMPLATE
-inline bool EEPNAME::locked(void) {
-    eeprom_busy_wait();
-    eeprom_read_block(&buffer,  // local memory
-                      address,  // EEProm address
-                      sizeof(magic_type));
-    eeprom_busy_wait();
-    H();
-    D(F("\tRead magic: " PFX));
-    D(buffer.magic, HEX);
-    D(F(" - "));
-    if (buffer.magic == static_cast<magic_type>(~magic_value)) {
-        DL(F("Contents confirmed locked"));
-        return true;
-    } else if (buffer.magic == static_cast<magic_type>(magic_value)) {
-        DL(F("Contents confirmed unlocked"));
-        return false;
-    } else {
-        D(F("Read invalid magic value, expecting " PFX));
-        D(static_cast<magic_type>(magic_value), HEX);
-        D(F(" or " PFX));
-        DL(static_cast<magic_type>(~magic_value), HEX);
-        return false;  // so unlock fails
-    }
-}
-
-EEPTEMPLATE
-inline bool EEPNAME::unlock(void) {
-    H();
-    DL(F("\tUnlocking"));
-    if (!locked()) {
+template<typename Data, Version version_value, Magic magic_value>
+Eep<Data, version_value, magic_value>::Eep(void) :
+    block_size(sizeof(Block<Data>)) {
+    if (!load()) {
         H();
-        DL(F("\tUnlock failed"));
-        return false;
+        DL(F("\tInvalid data, NOT resetting."));
+        return;
     }
-    magic_type correct = static_cast<magic_type>(magic_value);
-    eeprom_busy_wait();
-    eeprom_update_block(&correct,  // local memory
-                        address,   // EEProm address
-                        sizeof(magic_type));
-    eeprom_busy_wait();
     H();
-    DL(F("\tContents unlocked"));
-    buffer.magic = correct;
-    return !locked();
+    DL(F("\tInitialized"));
+    this->dump();
 }
 
-EEPTEMPLATE
-inline bool EEPNAME::save(void) {
-    H();
-    DL(F("\tSaving"));
-    if (valid()) {
-        //lock();  // protect against power-fail during save
-        buffer.magic = static_cast<magic_type>(~magic_value); // lock value
-        // Just to be extra sure, write version also
-        buffer.version = static_cast<version_type>(version_value);
-        eeprom_busy_wait();
-        eeprom_update_block(&buffer,                        // local memory
-                            address,                        // EEProm address
-                            sizeof(Block));                 // Only update data
-        H();
-        D(F("\tWrote "));
-        D(sizeof(Block), DEC);
-        DL(F(" bytes"));
-        eeprom_busy_wait();
-        return unlock();
-    } else {
-        H();
-        DL(F("\tSaving failed"));
-        return false;
-    }
-}
-
-EEPTEMPLATE
-inline bool EEPNAME::save(data_type* data) {
-    if ((data) && (data != &buffer.data))
-        memcpy(&buffer.data, data, sizeof(data_type));
-    return save();
-}
-
-EEPTEMPLATE
-inline data_type* EEPNAME::data(void) {
-    if (valid())
-        return &buffer.data;
-    else
-        return reinterpret_cast<data_type*>(0);
-}
-
-EEPTEMPLATE
-inline data_type* EEPNAME::load(void) {
+template<typename Data, Version version_value, Magic magic_value>
+void Eep<Data, version_value, magic_value>::load_unvalidated(Block<Data>& dest) {
     H();
     D(F("\tLoading "));
-    D(sizeof(Block), DEC);
-    DL(F(" bytes"));
-    eeprom_read_block(&buffer,                              // local memory
-                      address,                              // EEProm address
-                      sizeof(Block));
-    return data();
+    D(this->block_size, DEC);
+    D(F(" bytes from @ 0x"));
+    D(reinterpret_cast<uintptr_t>(&this->block_eeprom), HEX);
+    D(F(" to @"));
+    DL(reinterpret_cast<uintptr_t>(&dest), HEX);
+    eeprom_busy_wait();
+    eeprom_read_block(&dest,  // local memory
+                      &this->block_eeprom, // EEProm address
+                      this->block_size);
+}
+
+template<typename Data, Version version_value, Magic magic_value>
+void Eep<Data, version_value, magic_value>::load_unvalidated(void) {
+    load_unvalidated(this->buffer);
+}
+
+template<typename Data, Version version_value, Magic magic_value>
+bool Eep<Data, version_value, magic_value>::valid(const Block<Data>& check) {
+    H();
+    D(F("\tContents @ 0x"));
+    D(reinterpret_cast<uintptr_t>(&check), HEX);
+    bool valid_magic = check.magic == magic_value;
+    bool valid_version = check.version == version_value;
+    bool crc_valid = check.crc_valid();
+    if (valid_magic && valid_version && crc_valid)
+        D(F(" valid"));
+    else
+        D(F(" invalid"));
+    D(F(" magic: 0x"));
+    D(check.magic, HEX);
+    D(F(" ver: "));
+    D(check.version, DEC);
+    D(F(" CRC: 0x"));
+    DL(check.crc, HEX);
+    if (valid_magic && valid_version && crc_valid)
+        return true;
+    else {
+        H();
+        D(F("\tExpecting: "));
+        Block<Data> expected;
+        expected.magic = magic_value;
+        expected.version = version_value;
+        // Assume the data is correct
+        memcpy(&expected.data, &check.data, sizeof(expected.data));
+        expected.crc = expected.make_crc();
+        D(F(" magic: 0x"));
+        D(expected.magic, HEX);
+        D(F(" ver: "));
+        D(expected.version, DEC);
+        D(F(" CRC: 0x"));
+        DL(expected.crc, HEX);
+        return false;
+    }
+}
+
+template<typename Data, Version version_value, Magic magic_value>
+bool Eep<Data, version_value, magic_value>::valid() {
+    return this->valid(this->buffer);
+}
+
+template<typename Data, Version version_value, Magic magic_value>
+bool Eep<Data, version_value, magic_value>::save(const Data& data) {
+    H();
+    DL(F("\tVerifying format"));
+    this->dump();
+    Block<Data> in_eeprom;  // Don't overwrite static buffer
+    this->load_unvalidated(in_eeprom);
+    if (this->valid(in_eeprom)) {
+        Block<Data> to_save;
+        H();
+        D(F("\tSaving "));
+        // Make double-sure these are correct
+        to_save.magic = magic_value;
+        to_save.version = version_value;
+        memcpy(&to_save.data, &data, sizeof(to_save.data));
+        to_save.crc = to_save.make_crc();
+        D(F("CRC: 0x"));
+        DL(to_save.crc, HEX);
+        // protect against power-fail during save
+        to_save.magic = ~magic_value; // always invalid value
+        eeprom_busy_wait();
+        eeprom_update_block(&to_save, // local memory
+                            &this->block_eeprom, // EEProm address
+                            this->block_size);
+        // No-power-fail, write correct magic
+        to_save.magic = magic_value;
+        eeprom_update_block(&to_save, // local memory
+                            &this->block_eeprom, // EEProm address
+                            this->block_size);
+        H();
+        D(F("\tWrote "));
+        D(this->block_size, DEC);
+        DL(F(" bytes"));
+        this->dump();
+        return this->valid(to_save);
+    } else {  // Formatting in eeprom is wrong
+        H();
+        DL(F("\tSaving failed, EEPROM data format invalid."));
+        return false;
+    }
+}
+
+template<typename Data, Version version_value, Magic magic_value>
+bool Eep<Data, version_value, magic_value>::save(void) {
+    return this->save(this->buffer.data);
+}
+
+template<typename Data, Version version_value, Magic magic_value>
+bool Eep<Data, version_value, magic_value>::format(const Data& data) {
+    H();
+    DL(F("\tFormatting EEPROM..."));
+    Block<Data> to_format;
+    to_format.magic = magic_value;
+    to_format.version = version_value;
+    memcpy(&to_format.data, &data, sizeof(to_format.data));
+    to_format.crc = to_format.make_crc();
+    // lock in case of power-failure during write
+    to_format.magic = ~magic_value; // lock value
+    eeprom_busy_wait();
+    eeprom_update_block(&to_format, // local memory
+                        &this->block_eeprom,  // EEProm address
+                        this->block_size);
+    // No-power-fail, write correct magic
+    to_format.magic = magic_value; // lock value
+    eeprom_update_block(&to_format, // local memory
+                        &this->block_eeprom,  // EEProm address
+                        this->block_size);
+    this->dump();
+    return this->valid(to_format);
+}
+
+template<typename Data, Version version_value, Magic magic_value>
+bool Eep<Data, version_value, magic_value>::format() {
+    return this->format(this->buffer.data);
+}
+
+template<typename Data, Version version_value, Magic magic_value>
+Data* Eep<Data, version_value, magic_value>::data(void) {
+    H();
+    D(F("\tProviding Static buffer @ 0x"));
+    DL(reinterpret_cast<uintptr_t>(&this->buffer), HEX);
+    // Check stored validity, buffer may have changed
+    Block<Data> check;
+    this->load_unvalidated(check);
+    if (this->valid(check))
+        return &this->buffer.data;
+    else
+        return reinterpret_cast<Data*>(NULL);
+}
+
+template<typename Data, Version version_value, Magic magic_value>
+Data* Eep<Data, version_value, magic_value>::load(void) {
+    H();
+    D(F("\tStatic buffer @"));
+    DL(reinterpret_cast<uintptr_t>(&this->buffer), HEX);
+    this->dump();
+    this->load_unvalidated();
+    if (this->valid())
+        return &this->buffer.data;
+    else
+        return reinterpret_cast<Data*>(NULL);
 }
 
 #ifdef EEPDEBUG
-EEPTEMPLATE
-void EEPNAME::dump(self_type::Block* address) {
+template<typename Data, Version version_value, Magic magic_value>
+void Eep<Data, version_value, magic_value>::dump(void) {
     H();
-    DL(F("\tDumping EEProm addresses and contents:"));
-    static uint8_t* start_address = reinterpret_cast<uint8_t*>(address);
-    for (uint8_t* byte_address = start_address;
-         byte_address < start_address + sizeof(Block);
-         byte_address += 8) {
-
-        D(F("\n@" PFX));
-        D(reinterpret_cast<uint16_t>(byte_address), HEX);
+    D(F("\tDumping @ 0x"));
+    uintptr_t start_block_eeprom = reinterpret_cast<uintptr_t>(&this->block_eeprom);
+    D(start_block_eeprom, HEX);
+    D(F(" ("));
+    D(this->block_size);
+    D(F(" bytes):"));
+    if (this->block_size > 2048 || this->block_size < 8) {
+        D(F("Bad block size: "));
+        D(this->block_size);
+        DL(F(" bytes"));
+        while(true);  // loop forever
+    }
+    for (uint16_t offset = 0; offset < this->block_size; offset += 8) {
+        DL();
+        H();
+        D(F("\t@ 0x"));
+        D(start_block_eeprom + offset, HEX);
         D(F(":\t"));  // tab avoids need to pad value
-        for (uint8_t b=0; b<7; b++)
-            if (byte_address + b > start_address + sizeof(Block))
+        for (uint8_t bite = 0; bite < 8; bite++)
+            if (offset + bite > block_size)
                 break;
             else {
-                #ifdef EEP_HEX_PFX
+                uint16_t complete_block_eeprom = start_block_eeprom + offset + bite;
                 D(F("0x"));
-                #endif // EEP_HEX_PFX
-                uint8_t value = eeprom_read_byte(byte_address + b);
+                uint8_t value = eeprom_read_byte(
+                                    reinterpret_cast<uint8_t*>(complete_block_eeprom));
                 if (value < 0x10) // Pad
                     D(F("0"));
                 D(value, HEX);
-                #ifdef EEP_HEX_PFX
-                D(F("  "));
-                #endif // EEP_HEX_PFX
+                D(F(" "));
             }
     }
     DL();
+}
+
+template<typename Data, Version version_value, Magic magic_value>
+void Eep<Data, version_value, magic_value>::ddump(const Data& data_progmem) {
+    static uintptr_t start_address = reinterpret_cast<uintptr_t>(&data_progmem);
+    H();
+    D(F("\tDumping defaults ("));
+    D(sizeof(data_progmem));
+    D(F(" bytes) @ 0x"));
+    D(start_address, HEX);
+    D(F(":"));
+    for (uint16_t offset = 0; offset < sizeof(data_progmem); offset += 8) {
+        DL();
+        H();
+        D(F("\t@ 0x"));
+        D(start_address + offset, HEX);
+        D(F(":\t"));  // tab avoids need to pad value
+        for (uint8_t bite = 0; bite < 8; bite++)
+            if (offset + bite > sizeof(data_progmem))
+                break;
+            else {
+                uint16_t complete_address = start_address + offset + bite;
+                D(F("0x"));
+                uint8_t value = pgm_read_byte(
+                                    reinterpret_cast<uint8_t*>(complete_address));
+                if (value < 0x10) // Pad
+                    D(F("0"));
+                D(value, HEX);
+                D(F(" "));
+            }
+    }
     DL();
 }
 #endif // EEPDEBUG
 
-EEPTEMPLATE
-EEPNAME::Eep(const data_type& defaults,
-             self_type::Block* eeprom_address) : address(eeprom_address) {
-    if (!load()) {
-        H();
-        D(F("\tResetting to defaults (locked magic: " PFX));
-        // protect against power-failure
-        buffer.magic = static_cast<magic_type>(~magic_value);
-        D(buffer.magic, HEX);
-        DL(F(")"));
-        buffer.version = version_value;
-        #ifdef DEFAULTS_PROGMEM
-            memcpy_P(&buffer.data, &defaults, sizeof(data_type));
-        #else
-            memcpy(&buffer.data, &defaults, sizeof(data_type));
-        #endif // DEFAULTS_PROGMEM
-        eeprom_busy_wait();
-        eeprom_update_block(&buffer,                        // local memory
-                            address,                        // EEProm address
-                            sizeof(Block));
-        H();
-        D(F("\tInitialized "));
-        D(sizeof(Block), DEC);
-        DL(F(" bytes"));
-        eeprom_busy_wait();
-        unlock();
-    }
-    H();
-    DL(F("\tInitialized"));
-}
-
-EEPTEMPLATE
-EEPNAME::Eep(self_type::Block* eeprom_address) : address(eeprom_address) {
-    if (!load()) {
-        H();
-        DL(F("\tInvalid data, NOT resetting." PFX));
-    }
-    H();
-    DL(F("\tInitialized"));
-}
-
 }; // namespace Eep
-
-// Prevent conflict or use outside header
-#ifndef EEP_CPP
-    #undef EEPTEMPLATED
-    #undef EEPTEMPLATE
-    #undef EEPNAME
-    #undef PFX
-    #undef H
-    #undef D
-    #undef DL
-#endif //EEP_CPP
-
 #endif  // EEP_H
