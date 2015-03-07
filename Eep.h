@@ -79,6 +79,15 @@ template<typename Data,
          Version version_value = DEFVERSION,
          Magic magic_value = DEFMAGIC> class Eep;
 
+// If data with correct magic and version found with
+// this crc value, then crc will be re-calculated
+// and stored prior to loading.  This removes need
+// to manually calculate crc's for structures that
+// will be flashed separately.  This value is
+// guaranteed to never appear as an actual crc
+// value.
+const Crc crcmagic = 0xA55A;
+
 // Normal use shouldn't ever need to touch this
 template<typename Data> struct Block;
 
@@ -183,7 +192,11 @@ Crc Block<Data>::make_crc(const Block& block) const {
         uint8_t* data = byte_addr + offset;
         crc = _crc16_update(crc, *data);
     }
-    return crc;
+    // This value is special (see above)
+    if (crc == crcmagic)
+        return ~crc;
+    else
+        return crc;
 }
 
 template<typename Data>
@@ -264,6 +277,10 @@ bool Eep<Data, version_value, magic_value>::valid(const Block<Data>& check) {
     bool valid_magic = check.magic == magic_value;
     bool valid_version = check.version == version_value;
     bool crc_valid = check.crc_valid();
+#ifdef NOEEPROMINIT
+    if (valid_magic && valid_version && (check.crc == crcmagic))
+        crc_valid = true;
+#endif  // NOEEPROMINIT
     if (valid_magic && valid_version && crc_valid)
         D(F(" valid"));
     else
@@ -272,7 +289,12 @@ bool Eep<Data, version_value, magic_value>::valid(const Block<Data>& check) {
     D(check.magic, HEX);
     D(F(" ver: "));
     D(check.version, DEC);
-    D(F(" CRC: 0x"));
+#ifdef NOEEPROMINIT
+    if (check.crc == crcmagic)
+        D(F(" CRC: MAGIC!"));
+    else
+#endif  // NOEEPROMINIT
+        D(F(" CRC: 0x"));
     DL(check.crc, HEX);
     if (valid_magic && valid_version && crc_valid)
         return true;
@@ -397,6 +419,12 @@ Data* Eep<Data, version_value, magic_value>::load(void) {
     DL(reinterpret_cast<uintptr_t>(&this->buffer), HEX);
     this->dump();
     this->load_unvalidated();
+#ifdef NOEEPROMINIT
+    if (this->buffer.crc == crcmagic) {
+        this->save();
+        this->load_unvalidated();
+    }
+#endif  // NOEEPROMINIT
     if (this->valid())
         return &this->buffer.data;
     else

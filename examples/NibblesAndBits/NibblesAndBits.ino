@@ -17,6 +17,13 @@
  *  Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
+#define EEPDEBUG
+// This allows allocating and initializing EEPROM manually.
+// The resulting .eep file can then be burned seperately.
+// e.g. avrdude -p m328p -c usbtiny -D -P usb
+//      -U eeprom:w:/tmp/build5073703394233512791.tmp/NibblesAndBits.cpp.eep:i
+#define NOEEPROMINIT
+
 #include <Eep.h>
 
 enum Stuff { StuffA, StuffB, StuffC };
@@ -45,28 +52,20 @@ typedef Eep::Eep<Stuff, 1, stuffMagic> StuffEep;
 typedef Eep::Eep<Junk, 1, junkMagic> JunkEep;
 typedef Eep::Eep<Doodads, 1, doodadsMagic> DoodadsEep;
 
-#define NOEEPROMINIT
-// This allows allocating and initializing EEPROM manually.
-// The resulting .eep file can then be burned seperately.
-// e.g. avrdude -p m328p -c usbtiny -D -P usb
-//      -U eeprom:w:/tmp/build5073703394233512791.tmp/NibblesAndBits.cpp.eep:i
-
 template<> Eep::Block<Stuff> StuffEep::block_eeprom EEMEM = {
     .magic = stuffMagic,
     .version = 1,
     .data = StuffB,
-    // You can #define EEPDEBUG after flashing invalid crc
-    // and it will tell you the correct value.  Or you can
-    // calculate it by hand.
-    .crc = 0x1E92
+    // This re-calculation of CRC value when found on load.
+    .crc = crcmagic
 };
 
 template<> Eep::Block<Junk> JunkEep::block_eeprom EEMEM = {
     .magic = junkMagic,
     .version = 1,
     .data = {false, 0x42},
-    // Both format() and save() will automatically re-calculate crc
-    .crc = 0xD63E
+    // This will never be returned as an actual CRC value.
+    .crc = crcmagic
 };
 
 template<> Eep::Block<Doodads> DoodadsEep::block_eeprom EEMEM = {
@@ -77,8 +76,7 @@ template<> Eep::Block<Doodads> DoodadsEep::block_eeprom EEMEM = {
         .bar = {true, -1234567890LL},
         .baz = {.nibbles = StuffC}
     },
-    // Don't forget to re-flash w/ correct values :)
-    .crc = 0xF2
+    .crc = crcmagic
 };
 
 void setup(void) {
