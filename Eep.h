@@ -128,6 +128,9 @@ class Eep {
     // Return address to static buffer holding loaded data, NULL if invalid
     Data* load(void);
 
+    // Return the EEPROM address of the data.
+    const Data* eeprom_data(void);
+
 #ifdef EEPDEBUG
     // Show actual contents for instance
     void dump(void);
@@ -200,24 +203,24 @@ Crc Block<Data>::make_crc(const Block& block) const {
 }
 
 template<typename Data>
-Crc Block<Data>::make_crc(void) const {
+inline Crc Block<Data>::make_crc(void) const {
     return this->make_crc(*this);
 }
 
 template<typename Data>
-bool Block<Data>::crc_valid(const Block& block) const {
+inline bool Block<Data>::crc_valid(const Block& block) const {
     return block.crc == make_crc(block);
 }
 
 template<typename Data>
-bool Block<Data>::crc_valid(void) const {
+inline bool Block<Data>::crc_valid(void) const {
     return this->crc_valid(*this);
 }
 
 
 template<typename Data, Version version_value, Magic magic_value>
-Eep<Data, version_value, magic_value>::Eep(const Data& data_progmem) :
-    block_size(sizeof(Block<Data>)) {
+inline Eep<Data, version_value, magic_value>::Eep(const Data& data_progmem) :
+    block_size(sizeof(block_eeprom)) {
     if (!load()) {
         H();
         DL(F("\tResetting to defaults"));
@@ -237,8 +240,8 @@ Eep<Data, version_value, magic_value>::Eep(const Data& data_progmem) :
 }
 
 template<typename Data, Version version_value, Magic magic_value>
-Eep<Data, version_value, magic_value>::Eep(void) :
-    block_size(sizeof(Block<Data>)) {
+inline Eep<Data, version_value, magic_value>::Eep(void) :
+    block_size(sizeof(block_eeprom)) {
     if (!load()) {
         H();
         DL(F("\tInvalid data, NOT resetting."));
@@ -250,7 +253,7 @@ Eep<Data, version_value, magic_value>::Eep(void) :
 }
 
 template<typename Data, Version version_value, Magic magic_value>
-void Eep<Data, version_value, magic_value>::load_unvalidated(Block<Data>& dest) {
+inline void Eep<Data, version_value, magic_value>::load_unvalidated(Block<Data>& dest) {
     H();
     D(F("\tLoading "));
     D(this->block_size, DEC);
@@ -265,7 +268,7 @@ void Eep<Data, version_value, magic_value>::load_unvalidated(Block<Data>& dest) 
 }
 
 template<typename Data, Version version_value, Magic magic_value>
-void Eep<Data, version_value, magic_value>::load_unvalidated(void) {
+inline void Eep<Data, version_value, magic_value>::load_unvalidated(void) {
     load_unvalidated(this->buffer);
 }
 
@@ -318,7 +321,7 @@ bool Eep<Data, version_value, magic_value>::valid(const Block<Data>& check) {
 }
 
 template<typename Data, Version version_value, Magic magic_value>
-bool Eep<Data, version_value, magic_value>::valid() {
+inline bool Eep<Data, version_value, magic_value>::valid() {
     return this->valid(this->buffer);
 }
 
@@ -365,7 +368,7 @@ bool Eep<Data, version_value, magic_value>::save(const Data& data) {
 }
 
 template<typename Data, Version version_value, Magic magic_value>
-bool Eep<Data, version_value, magic_value>::save(void) {
+inline bool Eep<Data, version_value, magic_value>::save(void) {
     return this->save(this->buffer.data);
 }
 
@@ -394,12 +397,12 @@ bool Eep<Data, version_value, magic_value>::format(const Data& data) {
 }
 
 template<typename Data, Version version_value, Magic magic_value>
-bool Eep<Data, version_value, magic_value>::format() {
+inline bool Eep<Data, version_value, magic_value>::format() {
     return this->format(this->buffer.data);
 }
 
 template<typename Data, Version version_value, Magic magic_value>
-Data* Eep<Data, version_value, magic_value>::data(void) {
+inline Data* Eep<Data, version_value, magic_value>::data(void) {
     H();
     D(F("\tProviding Static buffer @ 0x"));
     DL(reinterpret_cast<uintptr_t>(&this->buffer), HEX);
@@ -413,7 +416,7 @@ Data* Eep<Data, version_value, magic_value>::data(void) {
 }
 
 template<typename Data, Version version_value, Magic magic_value>
-Data* Eep<Data, version_value, magic_value>::load(void) {
+inline Data* Eep<Data, version_value, magic_value>::load(void) {
     H();
     D(F("\tStatic buffer @"));
     DL(reinterpret_cast<uintptr_t>(&this->buffer), HEX);
@@ -429,6 +432,14 @@ Data* Eep<Data, version_value, magic_value>::load(void) {
         return &this->buffer.data;
     else
         return reinterpret_cast<Data*>(NULL);
+}
+
+template<typename Data, Version version_value, Magic magic_value>
+const Data* Eep<Data, version_value, magic_value>::eeprom_data(void) {
+    if (this->valid())
+        return reinterpret_cast<const Data*>(offsetof(Block<Data>, data));
+    else
+        return NULL;
 }
 
 #ifdef EEPDEBUG

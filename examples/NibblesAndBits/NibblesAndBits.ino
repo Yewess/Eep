@@ -72,7 +72,7 @@ template<> Eep::Block<Doodads> DoodadsEep::block_eeprom EEMEM = {
     .magic = doodadsMagic,
     .version = 1,
     .data = {
-        .foo = StuffA,
+        .foo = StuffC,
         .bar = {true, -1234567890LL},
         .baz = {.nibbles = StuffC}
     },
@@ -100,4 +100,9 @@ void setup(void) {
 }
 
 void loop(void) {
+    DoodadsEep doodadsEep;
+    const Doodads* doodads = doodadsEep.eeprom_data();
+    Serial.print(F("The offset in eeprom of Doodad's data is:"));
+    Serial.println(reinterpret_cast<uintptr_t>(doodads), HEX);
+    while (true);
 }
