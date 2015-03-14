@@ -32,37 +32,37 @@ Example Usage
 
     #include <Eep.h>
 
+    // Arbitrary type of data to persist w/in EEPROM. Make as many as you want.
+    // They must be "standard layout" class, struct, or aggregate.
+    // No fancy stuff like constructors, though member-functions and static
+    // members are okay. there is a small (9-byte) overhead per data structure.
     struct Data {
         char h[6];
         char w[6];
         uint32_t answer;
     };
 
-    const Data dataDefaults PROGMEM = {
-        .h = "hello",
-        .w = "world",
-        .answer = 42U
-    };
-
-    typedef Eep::Eep<Data> DataEep;
+    // Handy-dandy macro to define the type <name> for EEPROM access,
+    // define <name>_defaults to hold defaults in PROGMEM,
+    // and initialize EEPROM section.
+    NewEepDefaults(DataEep,        // Eep type <name> to create,
+                   Data,           // to store this kind of data,
+                   1,              // with this version,
+                   2,              // in this format,
+                   .h = "hello",   // with members set
+                   .w = "world",   // to these
+                   .answer = 42U   // default values
+    );
 
     void setup(void) {
-        Serial.begin(115200);
-        DataEep eep(dataDefaults);
+        DataEep eep(DataEep_defaults);
         Data* data = eep.data();
-        if (data) {
+        if (data) // NULL pointer signals load/reset failure
             Serial.println(F("EEPRom content is valid"));
-            Serial.print(F("The data is: "));
-            Serial.print(data->h);
-            Serial.print(F(" "));
-            Serial.print(data->w);
-            Serial.print(F(" answer is: "));
-            Serial.println(data->answer);
-        } else
+        else
             Serial.println(F("Eeprom content is invalid!"));
     }
 
-    void loop(void) {
-    }
+    void loop(void) {}
 
 Copyright (C) 2014 Christopher C. Evich

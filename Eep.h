@@ -29,14 +29,34 @@
 namespace Eep {
 
 /*
+ * Basic typedefs for reference
+ */
+typedef uint32_t Magic;  // 4-bytes
+typedef uint8_t Version; // 1-byte
+typedef uint32_t Crc;    // 4-bytes
+
+/*
  * Macros
  */
 
-// (Advanced/Optional) Define NOEEPROMINIT to not
-// initialize static, empty EEPROM values.  Then caller
-// is responsible for EEPROM initialization.  The output
-// can then be burned to the EEPROM separately.
-//#define NOEEPROMINIT
+// Handy-dandy macro to setup type <name> from a <data_type>,
+// <version>, <magic> and initial values for data_type.
+#define NewEep(name, data_type, version, magic, ...) \
+typedef Eep::Eep<data_type, version, magic> name; \
+template<> Eep::Block<data_type> name::block_eeprom EEMEM = { \
+    magic, \
+    version, \
+    {__VA_ARGS__}, \
+    crcmagic \
+}
+
+// Same as NewEep() macro, but also defines <name>_defaults
+// for use during construction, and loads <init> values into
+// program memory and leaves Eeprom zero'd.
+#define NewEepDefaults(name, data_type, version, magic, ...) \
+typedef Eep::Eep<data_type, version, magic> name; \
+template<> Eep::Block<data_type> name::block_eeprom EEMEM = {0}; \
+const data_type name ## _defaults PROGMEM = {__VA_ARGS__}
 
 // Define this to enable library debugging
 #ifndef EEPDEBUG
@@ -62,13 +82,6 @@ namespace Eep {
 #ifndef DEFCRC
 #define DEFCRC 0
 #endif // DEFCRC
-
-/*
- * Basic typedefs for reference
- */
-typedef uint32_t Magic;
-typedef uint8_t Version;
-typedef uint32_t Crc;
 
 /*
  * Forward declarations
@@ -128,7 +141,7 @@ class Eep {
     // Return address to static buffer holding loaded data, NULL if invalid
     Data* load(void);
 
-    // Return the EEPROM address of the data.
+    // Return the EEPROM address of the data (not header!).
     const Data* eeprom_data(void);
 
 #ifdef EEPDEBUG
@@ -170,15 +183,6 @@ struct Block {
     bool crc_valid(const Block& block) const;
     bool crc_valid(void) const;
 };
-
-/*
- * Static Definitions
- */
-
-#ifndef NOEEPROMINIT
-template<typename Data, Version version_value, Magic magic_value>
-Block<Data> Eep<Data, version_value, magic_value>::block_eeprom EEMEM;
-#endif  // NOEEPROMINIT
 
 /*
  * Implementations
@@ -437,7 +441,9 @@ inline Data* Eep<Data, version_value, magic_value>::load(void) {
 template<typename Data, Version version_value, Magic magic_value>
 const Data* Eep<Data, version_value, magic_value>::eeprom_data(void) {
     if (this->valid())
-        return reinterpret_cast<const Data*>(offsetof(Block<Data>, data));
+        return reinterpret_cast<const Data*>(
+            reinterpret_cast<uintptr_t>(&block_eeprom) +
+            offsetof(Block<Data>, data));
     else
         return NULL;
 }
@@ -446,7 +452,7 @@ const Data* Eep<Data, version_value, magic_value>::eeprom_data(void) {
 template<typename Data, Version version_value, Magic magic_value>
 void Eep<Data, version_value, magic_value>::dump(void) {
     H();
-    D(F("\tDumping @ 0x"));
+    D(F("\tDumping EEPROM @ 0x"));
     uintptr_t start_block_eeprom = reinterpret_cast<uintptr_t>(&this->block_eeprom);
     D(start_block_eeprom, HEX);
     D(F(" ("));
@@ -465,7 +471,7 @@ void Eep<Data, version_value, magic_value>::dump(void) {
         D(start_block_eeprom + offset, HEX);
         D(F(":\t"));  // tab avoids need to pad value
         for (uint8_t bite = 0; bite < 8; bite++)
-            if (offset + bite > block_size)
+            if (offset + bite >= block_size)
                 break;
             else {
                 uint16_t complete_block_eeprom = start_block_eeprom + offset + bite;
@@ -485,7 +491,7 @@ template<typename Data, Version version_value, Magic magic_value>
 void Eep<Data, version_value, magic_value>::ddump(const Data& data_progmem) {
     static uintptr_t start_address = reinterpret_cast<uintptr_t>(&data_progmem);
     H();
-    D(F("\tDumping defaults ("));
+    D(F("\tDumping PROGMEM defaults ("));
     D(sizeof(data_progmem));
     D(F(" bytes) @ 0x"));
     D(start_address, HEX);
@@ -497,7 +503,7 @@ void Eep<Data, version_value, magic_value>::ddump(const Data& data_progmem) {
         D(start_address + offset, HEX);
         D(F(":\t"));  // tab avoids need to pad value
         for (uint8_t bite = 0; bite < 8; bite++)
-            if (offset + bite > sizeof(data_progmem))
+            if (offset + bite >= sizeof(data_progmem))
                 break;
             else {
                 uint16_t complete_address = start_address + offset + bite;

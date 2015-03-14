@@ -23,37 +23,37 @@
 
 #include <Eep.h>
 
-// Arbitrary type of data to persist w/in EEProm. Make as many as you want.
+// Arbitrary type of data to persist w/in EEPROM. Make as many as you want.
 // They must be "standard layout" class, struct, or aggregate.
-// No fancy stuff like constructors, though member-functions are okay.
-// There is a small overhead (handful of bytes) per data structure, used
-// to frame the data and protect against corruption during power failure.
+// No fancy stuff like constructors, though member-functions and static
+// members are okay. there is a small (9-byte) overhead per data structure.
 struct Data {
     char h[6];
     char w[6];
     uint32_t answer;
+    static const Eep::Version version;  // static members are not
+    static const Eep::Magic magic;      // actually stored in EEPROM
 };
 
-// Default values to use when storage is uninitialized
-// or corrupt.
-const Data dataDefaults PROGMEM = {
-    .h = "hello",
-    .w = "world",
-    .answer = 42U
-};
+// Version number to indenfify changes in the format over time.
+// This should be changed any time the data structure format is changed.
+const Eep::Version Data::version = 1;
 
-// Optional.  The data can be wrapped with a unique identifier
-// to help distinguish it from other data structures and protect
-// it during write operations.
-const Eep::Magic dataMagic = 0xBAADF00D;
+// Unique identifier to help distinguish and protect this
+// from other data structures in EEPROM.
+const Eep::Magic Data::magic = 0xBAADF00D;
 
-// Optional.  The data will be wrapped with a version number to
-// indenfify changes in the format over time.  This should be
-// changed any time the data structure format is changed.
-const Eep::Version dataVersion = 1;
-
-// This just makes it easier to reference below
-typedef Eep::Eep<Data, dataVersion, dataMagic> DataEep;
+// Handy-dandy macro to define the type name for EEPROM access,
+// define <name>_defaults to hold defaults in PROGMEM,
+// and initialize EEPROM section.
+NewEepDefaults(DataEep,  // Eep type name to create,
+               Data,     // to store this kind of data,
+               Data::version,  // with this version,
+               Data::magic,    // in this format,
+               .h = "hello",   // with members set
+               .w = "world",   // to these
+               .answer = 42U   // values
+);
 
 void setup(void) {
     Serial.begin(115200);
@@ -72,7 +72,7 @@ void setup(void) {
 #endif //EEPDEBUG
 
     // Initialize and reset to default values if invalid/uninitialized
-    DataEep eep(dataDefaults);
+    DataEep eep(DataEep_defaults);
 
     // EEPRom contents loaded & validated during initialization (above).
     // Re-validate and obtain pointer to static data buffer

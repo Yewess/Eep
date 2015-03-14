@@ -17,21 +17,20 @@
  *  Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
-#define EEPDEBUG
-// This allows allocating and initializing EEPROM manually.
-// The resulting .eep file can then be burned seperately.
-// e.g. avrdude -p m328p -c usbtiny -D -P usb
-//      -U eeprom:w:/tmp/build5073703394233512791.tmp/NibblesAndBits.cpp.eep:i
-#define NOEEPROMINIT
+//#define EEPDEBUG
 
 #include <Eep.h>
 
-enum Stuff { StuffA, StuffB, StuffC };
-
 struct Junk {
     bool small;
-    int64_t large;
+    int32_t large;
+    static const Eep::Magic junkMagic;  // does not occupy storage space
+    static const Eep::Version junkVersion;  // this either
 };
+const Eep::Magic Junk::junkMagic = 0x87654321UL;
+const Eep::Version Junk::junkVersion = 1;
+
+enum Stuff { StuffA, StuffB, StuffC };
 
 union Things {
     Stuff nibbles;
@@ -44,40 +43,26 @@ struct Doodads {
     Things baz;
 };
 
-const Eep::Magic stuffMagic = 0x12345678;
-const Eep::Magic junkMagic = 0x87654321;
-const Eep::Magic doodadsMagic = 0x42424242;
+// Optionally, you can produce a <name>_defaults constant in PROGMEM and
+// EEMEM initialization from named member initializers.
+NewEepDefaults(DoodadsEep, // Will define & declare DoodadsEep_defaults
+               Doodads,
+               Junk::junkVersion,
+               ~Junk::junkMagic,
+               .foo = StuffA,  // Initialize Doodads members
+               .bar = {.small = true, .large = -123456789L},
+               .baz = {.nibbles = StuffC}
+);
 
-typedef Eep::Eep<Stuff, 1, stuffMagic> StuffEep;
-typedef Eep::Eep<Junk, 1, junkMagic> JunkEep;
-typedef Eep::Eep<Doodads, 1, doodadsMagic> DoodadsEep;
 
-template<> Eep::Block<Stuff> StuffEep::block_eeprom EEMEM = {
-    .magic = stuffMagic,
-    .version = 1,
-    .data = StuffB,
-    // This re-calculation of CRC value when found on load.
-    .crc = crcmagic
-};
-
-template<> Eep::Block<Junk> JunkEep::block_eeprom EEMEM = {
-    .magic = junkMagic,
-    .version = 1,
-    .data = {false, 0x42},
-    // This will never be returned as an actual CRC value.
-    .crc = crcmagic
-};
-
-template<> Eep::Block<Doodads> DoodadsEep::block_eeprom EEMEM = {
-    .magic = doodadsMagic,
-    .version = 1,
-    .data = {
-        .foo = StuffC,
-        .bar = {true, -1234567890LL},
-        .baz = {.nibbles = StuffC}
-    },
-    .crc = crcmagic
-};
+// Alternativly, don't store defaults, only define EEMEM.  This
+// doesn't even need to be in the same file!
+//
+//                                                             bits
+//                                                     nibbles   |
+//                                                        |      |
+//                                                        v      v
+NewEep(JunkEep, Junk, Junk::junkVersion, Junk::junkMagic, false, 0x42);
 
 void setup(void) {
     Serial.begin(115200);
@@ -85,24 +70,42 @@ void setup(void) {
     Serial.println(F("\nSetup()"));
 
     // Data must be flashed separately, no defaults provided!
-    StuffEep stuffEep;
     JunkEep junkEep;
-    DoodadsEep doodadsEep;
 
-    // Data is still validated however.
-    Stuff* stuff = stuffEep.data();
+    // This one will automaticall load from defaults if EEMEM is invalid
+    DoodadsEep doodadsEep(DoodadsEep_defaults);
+
+    // Data is validated on access, NULL returned if/when invalid.
     Junk* junk = junkEep.data();
     Doodads* doodads = doodadsEep.data();
-    if (stuff && junk && doodads)
-        Serial.println(F("Yay, you flashed them all!"));
-    else
-        Serial.println(F("Eeprom content is invalid!"));
+    if (junk)
+        Serial.println(F("Yay, you flashed 'junk'"));
+    if (doodads && doodads->bar.large == -123456789LL)
+        Serial.println(F("Successfully loaded 'doodads'"));
 }
 
 void loop(void) {
     DoodadsEep doodadsEep;
-    const Doodads* doodads = doodadsEep.eeprom_data();
-    Serial.print(F("The offset in eeprom of Doodad's data is:"));
-    Serial.println(reinterpret_cast<uintptr_t>(doodads), HEX);
+    uintptr_t doodads_offset =
+        reinterpret_cast<uintptr_t>(doodadsEep.eeprom_data());
+    size_t doodads_size = sizeof(Doodads);
+    Serial.print(F("The offset in eeprom of Doodad's data is "));
+    Serial.print(doodads_offset, HEX);
+    Serial.print(F(" (0-based) and "));
+    Serial.print(doodads_size);
+    Serial.println(F(" bytes long."));
+
+    size_t doodads_block_size = sizeof(Eep::Block<Doodads>);
+    Serial.print(F("doodadsEep size is: "));
+    Serial.print(doodads_block_size);
+    Serial.println(F(" bytes."));
+
+    // For testing/demonstration purposes, invalidate doodads data
+    // to show corruption detection and defaults loaded on next reset.
+    for (uint16_t bite = 0; bite < doodads_block_size; bite++) {
+        eeprom_update_byte(
+            reinterpret_cast<uint8_t*>(bite + doodads_offset),
+            0x00);
+    }
     while (true);
 }
